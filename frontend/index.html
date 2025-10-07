@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>EduPlatform Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* minimal safe css */
+    body { margin:0; font-family: Inter, system-ui, Arial; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Load our frontend helper as a module -->
+  <script type="module" src="./script.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Helper to access module functions loaded from script.js
+    // When using module script, functions aren't on window by default;
+    // But we'll call fetch endpoints directly inside React since script.js exports cannot be imported into babel inline easily.
+    // So we'll use the same endpoints: http://localhost:5000/api/...
+
+    function EduPlatform() {
+      const [currentView, setCurrentView] = useState('home');
+      const [user, setUser] = useState(JSON.parse(localStorage.getItem('edu_user') || 'null'));
+      const [allCourses, setAllCourses] = useState([]);
+      const [selectedCourse, setSelectedCourse] = useState(null);
+      const [selectedVideo, setSelectedVideo] = useState(null);
+      const [aiNotes, setAiNotes] = useState('');
+      const [loadingNotes, setLoadingNotes] = useState(false);
+      const [doubts, setDoubts] = useState([]);
+
+      useEffect(() => {
+        loadCourses();
+        loadDoubts();
+      }, []);
+
+      async function loadCourses() {
+        try {
+          const res = await fetch('http://localhost:5000/api/courses');
+          const data = await res.json();
+          setAllCourses(data);
+        } catch (err) {
+          console.error('load courses', err);
+        }
+      }
+
+      async function loadDoubts() {
+        try {
+          const res = await fetch('http://localhost:5000/api/doubts');
+          const data = await res.json();
+          setDoubts(data);
+        } catch (err) {
+          console.error('load doubts', err);
+        }
+      }
+
+      function handleLogin(userObj) {
+        localStorage.setItem('edu_user', JSON.stringify(userObj));
+        setUser(userObj);
+      }
+
+      async function generateAINotes(video) {
+        setLoadingNotes(true);
+        setAiNotes('');
+        try {
+          const res = await fetch('http://localhost:5000/api/notes/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoTitle: video.title, youtubeId: video.youtubeId })
+          });
+          const data = await res.json();
+          if (data.notes) setAiNotes(data.notes);
+          else setAiNotes(data);
+        } catch (err) {
+          console.error(err);
+          setAiNotes('Error generating notes.');
+        }
+        setLoadingNotes(false);
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700">
+          <nav className="bg-white/10 backdrop-blur-md border-b border-white/20 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 text-white text-2xl font-bold">
+                <span className="text-3xl">📚</span> EduPlatform Pro
+              </div>
+              <div className="flex gap-4">
+                <button onClick={() => setCurrentView('home')} className="text-white hover:text-yellow-300">Home</button>
+                <button onClick={() => setCurrentView('courses')} className="text-white hover:text-yellow-300">Courses</button>
+                <button onClick={() => setCurrentView('doubts')} className="text-white hover:text-yellow-300">Doubts</button>
+                <div className="text-white bg-white/20 px-4 py-2 rounded-full">
+                  {user ? user.name : 'Guest'}
+                </div>
+              </div>
+            </div>
+          </nav>
+
+          <div className="max-w-7xl mx-auto px-4 py-8">
+            {currentView === 'home' && (
+              <div className="space-y-8">
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
+                  <h1 className="text-4xl font-bold text-white mb-4">Your Learning Dashboard</h1>
+                  <p className="text-white/80">Welcome to the learner platform. Select a course to begin.</p>
+                </div>
+
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Featured Courses</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {allCourses.slice(0,6).map(course => (
+                      <div key={course._id} className="bg-white/10 rounded-xl overflow-hidden cursor-pointer" onClick={() => { setSelectedCourse(course); setCurrentView('course'); }}>
+                        <img src={course.thumbnail || (course.videos?.[0]?.thumbnail) || ''} alt={course.title} className="w-full h-40 object-cover" />
+                        <div className="p-4">
+                          <h3 className="text-xl font-bold text-white">{course.title}</h3>
+                          <p className="text-white/70 text-sm">{course.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentView === 'courses' && (
+              <div>
+                <h1 className="text-3xl font-bold text-white mb-6">All Courses</h1>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {allCourses.map(course => (
+                    <div key={course._id} onClick={() => { setSelectedCourse(course); setCurrentView('course'); }} className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 cursor-pointer hover:bg-white/20">
+                      <img src={course.thumbnail || (course.videos?.[0]?.thumbnail) || ''} alt={course.title} className="w-full h-40 object-cover rounded" />
+                      <div className="p-4">
+                        <h3 className="text-xl font-bold text-white">{course.title}</h3>
+                        <p className="text-white/70">{course.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {currentView === 'course' && selectedCourse && (
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
+                <button onClick={() => setCurrentView('courses')} className="text-white mb-4">← Back to Courses</button>
+                <h1 className="text-3xl font-bold text-white mb-2">{selectedCourse.title}</h1>
+                <p className="text-white/80 mb-6">{selectedCourse.description}</p>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {selectedCourse.videos.map((video, idx) => (
+                    <div key={video._id} onClick={() => { setSelectedVideo(video); setCurrentView('video'); }} className="p-4 rounded-lg bg-white/10 cursor-pointer hover:bg-white/20">
+                      <div className="flex items-center gap-4">
+                        <img src={video.thumbnail} className="w-36 h-20 object-cover rounded" alt={video.title} />
+                        <div>
+                          <div className="text-white font-semibold">Lesson {idx+1}: {video.title}</div>
+                          <div className="text-white/70 text-sm">Duration: {video.duration || '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {currentView === 'video' && selectedVideo && (
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 relative">
+                <button onClick={() => setCurrentView('course')} className="text-white mb-4">← Back to Course</button>
+                <h2 className="text-2xl font-bold text-white mb-4">{selectedVideo.title}</h2>
+
+                <div className="aspect-video bg-black rounded-lg mb-6">
+                  <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${selectedVideo.youtubeId}`} title={selectedVideo.title} frameBorder="0" allowFullScreen className="rounded-lg"></iframe>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <button onClick={() => generateAINotes(selectedVideo)} className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg">🤖 Generate AI Notes</button>
+                  <button onClick={() => setCurrentView('quiz')} className="bg-gradient-to-r from-green-500 to-teal-500 text-white px-6 py-3 rounded-lg">📝 Take Quiz</button>
+                  <button onClick={() => setCurrentView('compiler')} className="bg-yellow-400 px-6 py-3 rounded-lg">🧪 Open Playground</button>
+                </div>
+
+                {loadingNotes ? <div className="text-white">Generating notes...</div> : aiNotes ? (
+                  <div className="bg-white/20 p-4 rounded mb-6 text-white whitespace-pre-wrap">{aiNotes}</div>
+                ) : null}
+              </div>
+            )}
+
+            {currentView === 'quiz' && selectedVideo && (
+              <QuizModal video={selectedVideo} onBack={() => setCurrentView('video')} />
+            )}
+
+            {currentView === 'compiler' && selectedVideo && (
+              <CompilerUI onBack={() => setCurrentView('video')} />
+            )}
+
+            {currentView === 'doubts' && (
+              <div>
+                <h1 className="text-3xl font-bold text-white mb-6">Doubts</h1>
+                <DoubtsList doubts={doubts} refreshDoubts={loadDoubts} user={user} />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function QuizModal({ video, onBack }) {
+      const [answers, setAnswers] = useState({});
+      const [result, setResult] = useState(null);
+
+      const handleSelect = (qIndex, optIndex) => setAnswers(prev => ({ ...prev, [qIndex]: optIndex }));
+
+      const handleSubmit = async () => {
+        const user = JSON.parse(localStorage.getItem('edu_user') || 'null');
+        const userId = user?.id || null;
+        const answerArray = (video.quiz || []).map((q,i) => answers[i] ?? null);
+        const res = await fetch(`http://localhost:5000/api/videos/${video._id}/submit-quiz`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, answers: answerArray })
+        });
+        const data = await res.json();
+        setResult(data);
+        if (data.passed) alert("Passed! Next video unlocked.");
+        else alert(`Score: ${data.score}%. Need ${video.passThresholdPct || 60}% to pass.`);
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 border border-white/20 rounded-2xl p-8 max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-white">Quiz: {video.title}</h2>
+              <button onClick={onBack} className="text-white/50 text-2xl">&times;</button>
+            </div>
+
+            {!result ? (
+              <div>
+                {(video.quiz || []).map((q, qi) => (
+                  <div key={qi} className="mb-4">
+                    <p className="text-white/90 mb-2">{qi+1}. {q.question}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {q.options.map((opt, oi) => (
+                        <button key={oi} onClick={() => handleSelect(qi, oi)} className={`p-3 rounded-lg text-left w-full ${answers[qi] === oi ? 'bg-purple-500 text-white' : 'bg-white/10 text-white'}`}>
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <button onClick={handleSubmit} className="bg-green-500 text-white px-6 py-2 rounded">Submit</button>
+                  <button onClick={onBack} className="bg-white/10 text-white px-6 py-2 rounded">Close</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className={`text-6xl mb-4 ${result.passed ? 'text-green-400' : 'text-red-400'}`}>{result.passed ? '🎉' : '🤔'}</div>
+                <h3 className="text-2xl font-bold text-white mb-2">{result.score}%</h3>
+                <p className="text-white/80 mb-4">{result.passed ? "You passed." : "You did not pass. Try again."}</p>
+                <div className="flex justify-center gap-2">
+                  <button onClick={onBack} className="bg-white/20 px-4 py-2 rounded text-white">Close</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function CompilerUI({ onBack }) {
+      const [source, setSource] = useState("print('Hello World')");
+      const [result, setResult] = useState(null);
+      const [running, setRunning] = useState(false);
+
+      const run = async () => {
+        setRunning(true);
+        setResult(null);
+        const res = await fetch('http://localhost:5000/api/compile', {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source, language_id: 71, stdin: "" })
+        });
+        const data = await res.json();
+        setResult(data);
+        setRunning(false);
+      };
+
+      return (
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
+          <button onClick={onBack} className="text-white mb-4">← Back</button>
+          <h2 className="text-2xl font-bold text-white mb-4">Code Playground</h2>
+          <textarea value={source} onChange={e => setSource(e.target.value)} className="w-full h-64 bg-gray-900 text-green-400 p-4 rounded-lg font-mono" />
+          <div className="mt-4 flex gap-2">
+            <button onClick={run} disabled={running} className="bg-blue-600 text-white px-6 py-2 rounded">{running ? 'Running...' : 'Run'}</button>
+            <button onClick={() => setSource("print('Hello World')")} className="bg-white/20 text-white px-6 py-2 rounded">Load Sample</button>
+          </div>
+          {result && (
+            <div className="mt-4 bg-white/10 p-4 rounded">
+              <h3 className="text-white">Result</h3>
+              <pre className="text-sm text-white">{JSON.stringify(result, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function DoubtsList({ doubts, refreshDoubts, user }) {
+      const [title, setTitle] = useState('');
+      const [desc, setDesc] = useState('');
+
+      const post = async () => {
+        const userObj = JSON.parse(localStorage.getItem('edu_user') || 'null');
+        const userId = userObj?.id || null;
+        await fetch('http://localhost:5000/api/doubts', {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, title, description: desc, tags: [] })
+        });
+        setTitle(''); setDesc('');
+        refreshDoubts();
+      };
+
+      return (
+        <div>
+          <div className="bg-white/10 p-4 rounded mb-6">
+            <h3 className="text-white mb-2">Ask a Doubt</h3>
+            <input value={title} onChange={e=>setTitle(e.target.value)} className="w-full p-2 rounded mb-2" placeholder="Short title" />
+            <textarea value={desc} onChange={e=>setDesc(e.target.value)} className="w-full p-2 rounded mb-2" placeholder="Describe"></textarea>
+            <button onClick={post} className="bg-yellow-400 px-4 py-2 rounded">Post Doubt</button>
+          </div>
+
+          <div className="space-y-4">
+            {doubts.map(d => (
+              <div key={d._id} className="bg-white/10 p-4 rounded">
+                <h4 className="text-white font-semibold">{d.title}</h4>
+                <p className="text-white/80">{d.description}</p>
+                <small className="text-white/60">Posted: {new Date(d.createdAt).toLocaleString()}</small>
+                <div className="mt-2">
+                  {(d.answers || []).map((a,i) => (
+                    <div key={i} className="bg-white/5 p-2 rounded mt-2">
+                      <p className="text-white/80">{a.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Render
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<EduPlatform />);
+  </script>
+</body>
+</html>
